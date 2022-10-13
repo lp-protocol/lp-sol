@@ -15,7 +15,10 @@ contract TheLPTest is Test {
     }
 
     function testSvgString() public {
-        console2.log(lp.getSvgDataUri(1));
+        lp.mint(5);
+        for (uint256 i = 0; i < 5; i++) {
+            console2.log(lp.getSvgDataUri(i + 1));
+        }
         assertEq(true, true);
     }
 }

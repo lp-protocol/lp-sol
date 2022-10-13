@@ -4,9 +4,11 @@ import "ERC721A/ERC721A.sol";
 import "solmate/utils/SSTORE2.sol";
 import "solmate/auth/Owned.sol";
 import "solmate/utils/LibString.sol";
+import "openzeppelin-contracts/utils/Address.sol";
 
 contract TheLP is ERC721A, Owned {
     using LibString for uint256;
+    using Address for address;
 
     uint256 public constant DURATION = 30 days;
     uint256 public startTime;
@@ -16,6 +18,29 @@ contract TheLP is ERC721A, Owned {
 
     constructor() ERC721A("The LP", "LP") Owned(msg.sender) {
         // Team mint
+    }
+
+    struct Token {
+        bool exists;
+        uint256 idx;
+    }
+    mapping(uint256 => Token) public mappingIdToIndex;
+    uint256[] public tokensForSale;
+
+    error TokenNotForSale();
+
+    function buy(uint256 id) public {
+        if (!mappingIdToIndex[id].exists) {
+            revert TokenNotForSale();
+        }
+    }
+
+    function sell() public {}
+
+    function getBuyPrice() public view {}
+
+    function _startTokenId() internal view virtual override returns (uint256) {
+        return 1;
     }
 
     function setTraitsImage(string calldata data) external onlyOwner {
@@ -38,9 +63,9 @@ contract TheLP is ERC721A, Owned {
         return
             string(
                 abi.encodePacked(
-                    '<svg viewBox="0 0 40 40" width="250"><defs><image height="1120" width="120" image-rendering="pixelated" id="s" href="',
+                    '<svg version="1.1" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40" height="40" width="40"><defs><image height="1120" width="120" image-rendering="pixelated" id="s" href="',
                     getTraitsImage(),
-                    '" /></defs>'
+                    '" /><clipPath id="c"><rect width="40" height="40" /></clipPath></defs><g clip-path="url(#c)">'
                 )
             );
     }
@@ -88,10 +113,15 @@ contract TheLP is ERC721A, Owned {
     }
 
     // TODO: add non-reentrant
-    function mint() public {
-        tokenIdToSeed[1] = keccak256(
-            abi.encodePacked(blockhash(block.number - 1), uint256(1))
-        );
+    function mint(uint256 amount) public {
+        uint256 current = _nextTokenId();
+        uint256 end = current + amount - 1;
+        _mint(msg.sender, amount);
+        for (; current <= end; current++) {
+            tokenIdToSeed[current] = keccak256(
+                abi.encodePacked(blockhash(block.number - 1), current)
+            );
+        }
     }
 
     function getSvgDataUri(uint256 tokenId)
@@ -107,6 +137,25 @@ contract TheLP is ERC721A, Owned {
                 )
             );
     }
+
+    // function getJsonString(uint256 tokenId) public view returns (string memory) {
+    //     return
+    //         string(
+    //             abi.encodePacked(
+    //             '{"name": "Hero #',
+    //             uintToStr(tokenId),
+    //             '", "description": "',
+    //             DESCRIPTION,
+    //             '",',
+    //             '"image": "data:image/svg+xml;base64,',
+    //             Base64.encode(bytes(genSvg(tokenId))),
+    //             '",',
+    //             _genTraitString(tokenId),
+    //             _genStatsString(tokenId),
+    //             "]}"
+    //             )
+    //         );
+    // }
 
     function getSvg(uint256 tokenId) public view returns (string memory) {
         uint256 seed = uint256(tokenIdToSeed[tokenId]);
@@ -198,7 +247,7 @@ contract TheLP is ERC721A, Owned {
                     parts[6],
                     parts[7],
                     parts[8],
-                    "</svg>"
+                    "</g></svg>"
                 )
             );
     }
