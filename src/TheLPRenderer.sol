@@ -7,10 +7,13 @@ import "solmate/utils/LibString.sol";
 import "solmate/utils/ReentrancyGuard.sol";
 import "openzeppelin-contracts/utils/Address.sol";
 import "prb-math/PRBMathUD60x18.sol";
+import "./TheLPTraits.sol";
 import "./Base64.sol";
 
 contract TheLPRenderer is Owned {
     using LibString for uint256;
+
+    TheLPTraits traitsMetadata;
 
     address public traitsImagePointer;
     string description =
@@ -18,7 +21,9 @@ contract TheLPRenderer is Owned {
 
     error TraitsImageAlreadySet();
 
-    constructor() Owned(msg.sender) {}
+    constructor(TheLPTraits _traitsMetadata) Owned(msg.sender) {
+        traitsMetadata = _traitsMetadata;
+    }
 
     function setTraitsImage(string calldata data) external onlyOwner {
         if (traitsImagePointer != address(0)) {
@@ -106,7 +111,7 @@ contract TheLPRenderer is Owned {
             );
     }
 
-    function _getSvgDataUri(uint256[9] memory traits)
+    function _getSvgDataUri(uint256[10] memory traits)
         private
         view
         returns (string memory)
@@ -125,7 +130,7 @@ contract TheLPRenderer is Owned {
         view
         returns (string memory)
     {
-        uint256[9] memory traits = getTraits(seed);
+        uint256[10] memory traits = getTraits(seed);
         return
             string(
                 abi.encodePacked(
@@ -136,17 +141,18 @@ contract TheLPRenderer is Owned {
                     '",',
                     '"image":',
                     _getSvgDataUri(traits),
-                    '",',
+                    '","attributes":[',
+                    _getTraitMetadata(traits),
                     "]}"
                 )
             );
     }
 
-    function _getTraitString(string memory key, string memory value)
-        private
-        view
-        returns (string memory)
-    {
+    function _getTraitString(
+        string memory key,
+        string memory value,
+        bool comma
+    ) private pure returns (string memory) {
         return
             string(
                 abi.encodePacked(
@@ -154,12 +160,13 @@ contract TheLPRenderer is Owned {
                     key,
                     '","value":"',
                     value,
-                    '"}'
+                    '"}',
+                    comma ? "," : ""
                 )
             );
     }
 
-    function _getTraitMetadata(uint256[9] memory traits)
+    function _getTraitMetadata(uint256[10] memory traits)
         private
         view
         returns (string memory)
@@ -168,18 +175,91 @@ contract TheLPRenderer is Owned {
         for (uint256 i = 0; i < traits.length; i++) {
             uint256 current = traits[i];
             if (i == 0 && current != 0) {
-                parts[0] = _getTraitString("Back", back[current]);
+                parts[i] = _getTraitString(
+                    "Back",
+                    traitsMetadata.getBack(current),
+                    true
+                );
             }
             if (i == 1 && current != 0) {
-                parts[1] = _getTraitString("Pants", value);
+                parts[i] = _getTraitString(
+                    "Pants",
+                    traitsMetadata.getPants(current),
+                    true
+                );
+            }
+            if (i == 2 && current != 0) {
+                parts[i] = _getTraitString(
+                    "Shirt",
+                    traitsMetadata.getShirt(current),
+                    true
+                );
+            }
+            if (i == 3 && current != 0) {
+                parts[i] = _getTraitString(
+                    "Logo",
+                    traitsMetadata.getLogo(current),
+                    true
+                );
+            }
+            if (i == 4 && current != 0) {
+                parts[i] = _getTraitString(
+                    "Clothing item",
+                    traitsMetadata.getClothingItem(current),
+                    true
+                );
+            }
+            if (i == 5 && current != 0) {
+                parts[i] = _getTraitString(
+                    "Gloves",
+                    traitsMetadata.getGloves(current),
+                    true
+                );
+            }
+
+            if (i == 6 && current != 0) {
+                parts[i] = _getTraitString(
+                    "Hat",
+                    traitsMetadata.getHat(current),
+                    true
+                );
+            }
+            if (i == 8 && current != 0) {
+                parts[7] = _getTraitString(
+                    "Item",
+                    traitsMetadata.getItem(current),
+                    true
+                );
+            }
+            if (i == 9 && current != 0) {
+                parts[8] = _getTraitString(
+                    "Special",
+                    traitsMetadata.getSpecial(current),
+                    false
+                );
             }
         }
+
+        return
+            string(
+                abi.encodePacked(
+                    parts[0],
+                    parts[1],
+                    parts[2],
+                    parts[3],
+                    parts[4],
+                    parts[5],
+                    parts[6],
+                    parts[7],
+                    parts[8]
+                )
+            );
     }
 
     function getTraits(bytes32 _seed)
         public
         pure
-        returns (uint256[9] memory traits)
+        returns (uint256[10] memory traits)
     {
         uint256 seed = uint256(_seed);
 
@@ -216,10 +296,12 @@ contract TheLPRenderer is Owned {
             //kit front
             0,
             // hand
-            _r(seeds.eight + 1, 1, 100) <= 25 ? _r(seeds.eight, 63, 71) : 0
+            _r(seeds.eight + 1, 1, 100) <= 25 ? _r(seeds.eight, 63, 71) : 0,
+            // kit
+            _r(seeds.nine, 1, 100) <= 10 ? _r(seeds.nine, 1, 4) : 0
         ];
 
-        uint256 kit = _r(seeds.nine, 1, 100) <= 10 ? _r(seeds.nine, 1, 4) : 0;
+        uint256 kit = traits[9];
 
         if (kit != 0) {
             if (kit == 1) {
@@ -244,11 +326,11 @@ contract TheLPRenderer is Owned {
     }
 
     function getSvg(bytes32 _seed) public view returns (string memory) {
-        uint256[9] memory traits = getTraits(_seed);
+        uint256[10] memory traits = getTraits(_seed);
         return _getSvg(traits);
     }
 
-    function _getSvg(uint256[9] memory traits)
+    function _getSvg(uint256[10] memory traits)
         private
         view
         returns (string memory)

@@ -9,11 +9,10 @@ import "openzeppelin-contracts/utils/Address.sol";
 import "prb-math/PRBMathUD60x18.sol";
 import "./Base64.sol";
 
-contract TheLPRenderer {
+contract TheLPTraits {
     struct TraitInfo {
         mapping(uint256 => string) map;
     }
-
     //     traits = [
     //     // back
     //     _r(seeds.one, 1, 100) <= 10 ? _r(seeds.one, 1, 2) : 0,
@@ -46,6 +45,42 @@ contract TheLPRenderer {
     TraitInfo hat;
     TraitInfo item;
     TraitInfo special;
+
+    function getBack(uint256 i) public view returns (string memory) {
+        return back.map[i];
+    }
+
+    function getPants(uint256 i) public view returns (string memory) {
+        return pants.map[i];
+    }
+
+    function getShirt(uint256 i) public view returns (string memory) {
+        return shirt.map[i];
+    }
+
+    function getLogo(uint256 i) public view returns (string memory) {
+        return logo.map[i];
+    }
+
+    function getClothingItem(uint256 i) public view returns (string memory) {
+        return clothingItem.map[i];
+    }
+
+    function getGloves(uint256 i) public view returns (string memory) {
+        return gloves.map[i];
+    }
+
+    function getHat(uint256 i) public view returns (string memory) {
+        return hat.map[i];
+    }
+
+    function getItem(uint256 i) public view returns (string memory) {
+        return item.map[i];
+    }
+
+    function getSpecial(uint256 i) public view returns (string memory) {
+        return special.map[i];
+    }
 
     constructor() {
         back.map[1] = "Fairy Wings";

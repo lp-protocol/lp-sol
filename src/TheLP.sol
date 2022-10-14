@@ -9,11 +9,18 @@ import "openzeppelin-contracts/utils/Address.sol";
 import "prb-math/PRBMathUD60x18.sol";
 import "./Base64.sol";
 
-interface ITheLpRenderer {}
+interface ITheLpRenderer {
+    function getJsonString(uint256 tokenId, bytes32 seed)
+        external
+        view
+        returns (string memory);
+}
 
 contract TheLP is ERC721A, Owned, ReentrancyGuard {
     using LibString for uint256;
     using PRBMathUD60x18 for uint256;
+
+    ITheLpRenderer renderer;
 
     uint256 public constant MAX_SUPPLY = 10_000;
     uint256 public MIN_PRICE;
@@ -72,6 +79,15 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
             (getFeeBalance() + totalEthClaimed - _rewardDebt[nftId]).div(
                 MAX_SUPPLY * 10**18
             );
+    }
+
+    function tokenURI(uint256 tokenId)
+        public
+        view
+        override
+        returns (string memory)
+    {
+        return renderer.getJsonString(tokenId, tokenMintInfo[tokenId].seed);
     }
 
     function getEthBalance() public view returns (uint256) {
