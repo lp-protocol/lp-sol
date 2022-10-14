@@ -9,17 +9,7 @@ import "openzeppelin-contracts/utils/Address.sol";
 import "prb-math/PRBMathUD60x18.sol";
 import "./Base64.sol";
 
-contract TheLPRenderer is Owned {
-    using LibString for uint256;
-
-    address public traitsImagePointer;
-    string description =
-        "AN EXPERIMENTAL APPROACH TO BOOTSTRAPPING NFT LIQUIDITY AND REWARDING HOLDERS";
-
-    error TraitsImageAlreadySet();
-
-    mapping(uint256 => string) traitMap;
-
+contract TheLPRenderer {
     struct TraitInfo {
         mapping(uint256 => string) map;
     }
@@ -57,7 +47,7 @@ contract TheLPRenderer is Owned {
     TraitInfo item;
     TraitInfo special;
 
-    constructor() Owned(msg.sender) {
+    constructor() {
         back.map[1] = "Fairy Wings";
         back.map[2] = "Jetpack";
 
@@ -69,5 +59,79 @@ contract TheLPRenderer is Owned {
         pants.map[73] = "Orange Shorts";
         pants.map[74] = "Black Shorts";
         pants.map[75] = "White Shorts";
+
+        shirt.map[76] = "Orange";
+        shirt.map[77] = "Yellow";
+        shirt.map[78] = "Black";
+        shirt.map[79] = "Blue";
+        shirt.map[80] = "Green";
+        shirt.map[81] = "Red";
+        shirt.map[82] = "White";
+        shirt.map[83] = "Peanut";
+
+        logo.map[50] = "Bear";
+        logo.map[51] = "Chicken";
+        logo.map[52] = "Computer";
+        logo.map[53] = "Dino";
+        logo.map[54] = "Eth";
+        logo.map[55] = "LP";
+        logo.map[56] = "Metal";
+        logo.map[57] = "Rainbow";
+        logo.map[58] = "Smile";
+
+        clothingItem.map[3] = "Fanny pack";
+        clothingItem.map[4] = "Hawaiian";
+        clothingItem.map[5] = "Karate";
+        clothingItem.map[6] = "Puffer white";
+        clothingItem.map[7] = "Puffer peanut";
+        clothingItem.map[8] = "Puffer red";
+        clothingItem.map[9] = "LP Puffer";
+        clothingItem.map[10] = "Puffer blue";
+        clothingItem.map[11] = "Puffer orange";
+        clothingItem.map[12] = "Puffer yellow";
+        clothingItem.map[13] = "Suit jacket";
+        clothingItem.map[14] = "Body suit blue";
+        clothingItem.map[15] = "Body suit red";
+
+        gloves.map[16] = "Motorcycle";
+        gloves.map[17] = "Wrist guards";
+
+        hat.map[18] = "Aquarium";
+        hat.map[19] = "Army";
+        hat.map[20] = "Baseball";
+        hat.map[21] = "Bear";
+        hat.map[22] = "Black hood";
+        hat.map[23] = "Bucket helmet";
+        hat.map[24] = "Bucket hat";
+        hat.map[25] = "Bull";
+        hat.map[26] = "Captain";
+        hat.map[27] = "Cowboy";
+        hat.map[28] = "Dino";
+        hat.map[29] = "M";
+        hat.map[30] = "Ninja";
+        hat.map[31] = "Pirate";
+        hat.map[32] = "Safari";
+        hat.map[33] = "Santa";
+        hat.map[34] = "Shower cap";
+        hat.map[35] = "Sombrero";
+        hat.map[36] = "Bad guy";
+        hat.map[37] = "Viking";
+        hat.map[38] = "Builder";
+        hat.map[39] = "Hero";
+
+        item.map[63] = "Cellphone";
+        item.map[64] = "Briefcase";
+        item.map[65] = "Gecko";
+        item.map[66] = "Saber";
+        item.map[67] = "Lobster";
+        item.map[68] = "Lolli";
+        item.map[69] = "Shroom";
+        item.map[70] = "Ray gun";
+        item.map[71] = "Hero Sword";
+
+        special.map[1] = "Unicorn floaty";
+        special.map[2] = "Astronaut";
+        special.map[3] = "Explorer";
+        special.map[4] = "Twilight Knight";
     }
 }
