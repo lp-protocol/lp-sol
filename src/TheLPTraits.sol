@@ -13,28 +13,6 @@ contract TheLPTraits {
     struct TraitInfo {
         mapping(uint256 => string) map;
     }
-    //     traits = [
-    //     // back
-    //     _r(seeds.one, 1, 100) <= 10 ? _r(seeds.one, 1, 2) : 0,
-    //     // pants
-    //     _r(seeds.two, 1, 100) <= 2 ? 0 : _r(seeds.two, 1, 100) <= 50
-    //         ? _r(seed, 59, 62)
-    //         : _r(seed, 72, 75),
-    //     // shirt
-    //     _r(seeds.three, 1, 100) <= 96 ? _r(seeds.three, 76, 83) : 0,
-    //     // logo
-    //     _r(seeds.four, 1, 100) <= 35 ? _r(seeds.four, 50, 58) : 0,
-    //     // clothing item
-    //     _r(seeds.five, 1, 100) <= 25 ? _r(seeds.five, 3, 15) : 0,
-    //     // gloves
-    //     _r(seeds.six, 1, 100) <= 50 ? _r(seeds.six, 16, 17) : 0,
-    //     //hat
-    //     _r(seeds.seven, 1, 100) <= 45 ? _r(seeds.seven, 18, 39) : 0,
-    //     //kit front
-    //     0,
-    //     // hand
-    //     _r(seeds.eight + 1, 1, 100) <= 25 ? _r(seeds.eight, 63, 71) : 0
-    // ];
 
     TraitInfo back;
     TraitInfo pants;
@@ -45,6 +23,14 @@ contract TheLPTraits {
     TraitInfo hat;
     TraitInfo item;
     TraitInfo special;
+
+    string[5] public colors = [
+        "#f8f8f8",
+        "#E5FBEF",
+        "#F5FCDD",
+        "#FDEEE8",
+        "#E5F1F6"
+    ];
 
     function getBack(uint256 i) public view returns (string memory) {
         return back.map[i];
