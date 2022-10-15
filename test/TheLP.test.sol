@@ -64,13 +64,28 @@ contract TheLPTest is Test {
         assertEq(totalSupply, 1);
     }
 
-    function testMint_should_revert_if_amount_is_over_max_supply() public {}
+    function testMint_should_revert_if_amount_is_over_max_supply() public {
+        for (uint256 i = 0; i < 40; i++) {
+            lp.mint{value: 3.33 ether * 250}(250);
+        }
+        vm.expectRevert(TheLP.SoldOut.selector);
+        lp.mint{value: 3.33 ether * 1}(1);
+    }
 
-    function testMint_should_revert_if_value_less_than_total_cost() public {}
+    function testMint_should_revert_if_value_less_than_total_cost() public {
+        vm.expectRevert(TheLP.IncorrectPayment.selector);
+        lp.mint{value: 1 ether}(3);
+    }
 
     function testMint_should_save_token_data_for_range_of_tokens() public {}
 
     function testMint_should_refund_additional_amount() public {}
+
+    event PaymentReceived(address sender, uint256 value);
+
+    receive() external payable virtual {
+        emit PaymentReceived(msg.sender, msg.value);
+    }
 
     /*//////////////////////////////////////////////////////////////
         Get current mint price
