@@ -12,6 +12,8 @@ contract TheLPTest is Test {
   TheLPRenderer public renderer;
   TheLPTraits traits;
 
+  address testAddress = 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266;
+
   function setUp() public {
     traits = new TheLPTraits();
     renderer = new TheLPRenderer(traits);
@@ -141,55 +143,68 @@ contract TheLPTest is Test {
   }
 
   /*//////////////////////////////////////////////////////////////
-        Executing game over
+        is game over
     //////////////////////////////////////////////////////////////*/
-  function test_executeGameOver_ShouldRevertIfLockedIn() public {
-    for (uint256 i = 0; i < 40; i++) {
-      lp.mint{ value: 3.33 ether * 250 }(250);
-    }
-    bool lockedIn = lp.lockedIn();
-    assertTrue(lockedIn);
-    vm.expectRevert(TheLP.LockedIn.selector);
-    lp.executeGameOver();
-  }
-
-  function test_executeGameOver_ShouldRevertIfNotGameOver() public {
-    lp.mint{ value: 3.33 ether * 250 }(250);
-    vm.warp(block.timestamp + 5 days);
-    vm.expectRevert(TheLP.NotGameOver.selector);
-    lp.executeGameOver();
-  }
-
-  function test_executeGameOver_ShouldSetGameOverToTrue() public {
-    lp.mint{ value: 3.33 ether * 250 }(250);
-    vm.warp(block.timestamp + 34 days);
-    lp.executeGameOver();
-    bool gameOver = lp.gameOver();
-    assertTrue(gameOver);
-  }
-
-  function test_executeGameOver_ShouldBeCallableByAnyone() public {
-    lp.mint{ value: 3.33 ether * 250 }(250);
-    vm.warp(block.timestamp + 34 days);
-    vm.prank(address(0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266));
-    lp.executeGameOver();
-    bool gameOver = lp.gameOver();
-    assertTrue(gameOver);
-  }
-
-  function test_executeGameOver_ShouldRevertIfAlreadyGameOver() public {
-    lp.mint{ value: 3.33 ether * 250 }(250);
-    vm.warp(block.timestamp + 34 days);
-    lp.executeGameOver();
-    bool gameOver = lp.gameOver();
-    assertTrue(gameOver);
-    vm.expectRevert(TheLP.AlreadyGameOver.selector);
-    lp.executeGameOver();
-  }
 
   /*//////////////////////////////////////////////////////////////
         Redeem
     //////////////////////////////////////////////////////////////*/
+  function test_redeem_ShouldRevertIfNotGameOver() public {
+    lp.mint{ value: 3.33 ether * 5 }(5);
+    vm.warp(block.timestamp + 5 days);
+    uint256[] memory tokens = new uint256[](5);
+    tokens[0] = 1;
+    vm.expectRevert(TheLP.NotGameOver.selector);
+    lp.redeem(tokens);
+  }
+
+  function test_redeem_ShouldRedeemForMultipleTokens() public {
+    Address.sendValue(payable(testAddress), 50 ether);
+    vm.startPrank(testAddress);
+    uint256 balanceBeforeMint = address(testAddress).balance;
+    lp.mint{ value: 3.33 ether * 5 }(5);
+    uint256 balanceAfterMint = address(testAddress).balance;
+    assertEq(3.33 ether * 5, balanceBeforeMint - balanceAfterMint);
+    vm.warp(block.timestamp + 35 days);
+    uint256[] memory tokens = new uint256[](5);
+    for (uint256 i = 0; i < 5; i++) {
+      tokens[i] = i + 1;
+    }
+    lp.redeem(tokens);
+    uint256 balanceAfterRedeem = address(testAddress).balance;
+    assertEq(balanceAfterRedeem, balanceBeforeMint);
+    for (uint256 i = 0; i < 5; i++) {
+      (, uint256 cost) = lp.tokenMintInfo(i + 1);
+      assertEq(cost, 0);
+    }
+    vm.stopPrank();
+  }
+
+  function test_redeem_ShouldRedeemForSingleToken() public {
+    Address.sendValue(payable(testAddress), 50 ether);
+    vm.startPrank(testAddress);
+    uint256 balanceBeforeMint = address(testAddress).balance;
+    lp.mint{ value: 3.33 ether }(1);
+    uint256 balanceAfterMint = address(testAddress).balance;
+    assertEq(3.33 ether, balanceBeforeMint - balanceAfterMint);
+    vm.warp(block.timestamp + 35 days);
+    uint256[] memory tokens = new uint256[](1);
+    tokens[0] = 1;
+    lp.redeem(tokens);
+    uint256 balanceAfterRedeem = address(testAddress).balance;
+    assertEq(balanceAfterRedeem, balanceBeforeMint);
+    (, uint256 cost) = lp.tokenMintInfo(1);
+    assertEq(cost, 0);
+    vm.stopPrank();
+  }
+
+  function test_redeem_ShouldThrowIfCostIsZero() public {}
+
+  function test_redeem_ShouldThrowIfTryingToRedeemTwice() public {}
+
+  function test_redeem_ShouldThrowIfNotTokenOwnerRedeeming() public {}
+
+  function test_redeem_ShouldThrowIfNotOwner() public {}
 
   /*//////////////////////////////////////////////////////////////
         Buying post mint

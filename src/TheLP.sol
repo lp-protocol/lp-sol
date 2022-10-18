@@ -201,35 +201,24 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     return 1;
   }
 
-  function executeGameOver() public nonReentrant {
-    if (lockedIn) {
-      revert LockedIn();
-    }
-    bool isGameOver = block.timestamp >= endTime && _totalMinted() < MAX_SUPPLY;
-    if (!isGameOver) {
-      revert NotGameOver();
-    }
-    if (gameOver) {
-      revert AlreadyGameOver();
-    }
-    gameOver = true;
+  function isGameOver() public view returns (bool) {
+    return block.timestamp >= endTime && _totalMinted() < MAX_SUPPLY;
   }
 
   function _redeem(uint256 tokenId) private {
-    TokenMintInfo memory info = tokenMintInfo[tokenId];
-    if (info.cost == 0) {
+    if (tokenMintInfo[tokenId].cost == 0) {
       revert InvalidTokenId(tokenId);
     }
     if (ownerOf(tokenId) != msg.sender) {
       revert NotOwner(tokenId);
     }
-    Address.sendValue(payable(msg.sender), info.cost);
-    info.cost = 0;
+    Address.sendValue(payable(msg.sender), tokenMintInfo[tokenId].cost);
+    tokenMintInfo[tokenId].cost = 0;
   }
 
   function redeem(uint256[] memory tokenIds) public nonReentrant {
-    if (!gameOver) {
-      revert CannotRedeem();
+    if (!isGameOver()) {
+      revert NotGameOver();
     }
 
     for (uint256 i = 0; i < tokenIds.length; i++) {
