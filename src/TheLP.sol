@@ -67,6 +67,27 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     // Team mint
   }
 
+  function getTotalTokensForSale() public view returns (uint256) {
+    return tokensForSale.length;
+  }
+
+  function getAllTokensForSale() public view returns (uint256[] memory) {
+    return tokensForSale;
+  }
+
+  function paginateTokensForSale(uint256 from, uint256 to)
+    public
+    view
+    returns (uint256[] memory output)
+  {
+    uint256 count = from;
+    for (uint256 i = 0; count <= to; i++) {
+      output[i] = tokensForSale[count];
+      count++;
+    }
+    return output;
+  }
+
   function getEthBalance() public view returns (uint256) {
     uint256 balance = address(this).balance;
     uint256 fees = this.getFeeBalance();
@@ -76,6 +97,17 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
 
   function updateMinBuyPrice(uint256 price) public onlyOwner {
     minBuyPrice = price;
+  }
+
+  uint256 public buyFee = 0.1 * 10**18;
+  uint256 public feeSplit = 2 * 10**18;
+
+  function updateFeeSplit(uint256 newSplit) public onlyOwner {
+    feeSplit = newSplit;
+  }
+
+  function updateFee(uint256 newFee) public onlyOwner {
+    buyFee = newFee;
   }
 
   function getBuyPrice() public view returns (uint256, uint256) {
@@ -88,7 +120,9 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   }
 
   function getSellPrice() public view returns (uint256) {
-    uint256 sellPrice = getEthBalance().div(totalSupply());
+    uint256 sellPrice = getEthBalance().div(
+      totalSupply() - balanceOf(address(this))
+    );
     return sellPrice;
   }
 
@@ -105,7 +139,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
       revert IncorrectPayment();
     }
 
-    _totalFees += fee;
+    _totalFees += fee.div(feeSplit);
 
     mappingIdToIndex[id].exists = false;
 

@@ -198,13 +198,27 @@ contract TheLPTest is Test {
     vm.stopPrank();
   }
 
-  function test_redeem_ShouldThrowIfCostIsZero() public {}
+  function test_redeem_ShouldThrowIfTryingToRedeemTwice() public {
+    lp.mint{ value: 3.33 ether }(1);
+    vm.warp(block.timestamp + 35 days);
+    uint256[] memory tokens = new uint256[](1);
+    tokens[0] = 1;
+    lp.redeem(tokens);
+    vm.expectRevert(
+      abi.encodePacked(TheLP.InvalidTokenId.selector, uint256(1))
+    );
+    lp.redeem(tokens);
+  }
 
-  function test_redeem_ShouldThrowIfTryingToRedeemTwice() public {}
-
-  function test_redeem_ShouldThrowIfNotTokenOwnerRedeeming() public {}
-
-  function test_redeem_ShouldThrowIfNotOwner() public {}
+  function test_redeem_ShouldThrowIfNotTokenOwnerRedeeming() public {
+    lp.mint{ value: 3.33 ether }(1);
+    vm.warp(block.timestamp + 35 days);
+    uint256[] memory tokens = new uint256[](1);
+    tokens[0] = 1;
+    vm.prank(testAddress);
+    vm.expectRevert(abi.encodePacked(TheLP.NotOwner.selector, uint256(1)));
+    lp.redeem(tokens);
+  }
 
   /*//////////////////////////////////////////////////////////////
         Buying post mint
@@ -212,6 +226,27 @@ contract TheLPTest is Test {
 
   /*//////////////////////////////////////////////////////////////
         Selling post mint
+    //////////////////////////////////////////////////////////////*/
+  function test_sell_shouldThrowIfNotOwner() public {
+    _lockItIn();
+
+    lp.sell(1);
+  }
+
+  function test_sell_shouldThrowIfNotApproved() public {}
+
+  function test_sell_shouldWorkWithApprovalForSingleToken() public {}
+
+  function test_sell_shouldWorkWithApprovalForAll() public {}
+
+  function _lockItIn() internal {
+    for (uint256 i = 0; i < 40; i++) {
+      lp.mint{ value: 3.33 ether * 250 }(250);
+    }
+  }
+
+  /*//////////////////////////////////////////////////////////////
+        Read functions
     //////////////////////////////////////////////////////////////*/
 
   /*//////////////////////////////////////////////////////////////
