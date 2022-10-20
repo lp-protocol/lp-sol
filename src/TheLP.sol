@@ -160,6 +160,8 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     tokensForSale[mappingIdToIndex[id].idx] = lastTokenInBuyArray;
     // Remove last item
     tokensForSale.pop();
+    // Approve sender to move this token
+    // ERC721a doesn't abstract transfer functionality by default
     _tokenApprovals[id].value = msg.sender;
     transferFrom(address(this), msg.sender, id);
 
