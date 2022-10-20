@@ -223,21 +223,113 @@ contract TheLPTest is Test {
   /*//////////////////////////////////////////////////////////////
         Buying post mint
     //////////////////////////////////////////////////////////////*/
+  function test_buy_shouldBuyForSaleToken() public {
+    _lockItIn();
+    lp.setApprovalForAll(address(lp), true);
+    lp.sell(1);
+    lp.sell(2);
+    lp.sell(3);
+    Address.sendValue(payable(testAddress), 3 ether);
+
+    vm.startPrank(testAddress);
+    uint256 startingBuyerBalance = address(testAddress).balance;
+    uint256 startingSellerBalance = address(lp).balance;
+    (uint256 buyPrice, uint256 fee) = lp.getBuyPrice();
+    console2.log(buyPrice);
+    lp.buy{ value: buyPrice }(1);
+    uint256 endingBuyerBalance = address(testAddress).balance;
+    uint256 endingSellerBalance = address(lp).balance;
+    assertEq(startingBuyerBalance - endingBuyerBalance, buyPrice);
+    assertEq(endingSellerBalance - startingSellerBalance, buyPrice);
+
+    uint256 feeBalance = lp.getFeeBalance();
+
+    // fee is total fee half goes to fees for claiming half goes to contract LP pool
+    assertEq(feeBalance, fee / 2);
+    vm.stopPrank();
+  }
 
   /*//////////////////////////////////////////////////////////////
         Selling post mint
     //////////////////////////////////////////////////////////////*/
   function test_sell_shouldThrowIfNotOwner() public {
     _lockItIn();
-
+    vm.prank(testAddress);
+    vm.expectRevert(abi.encodePacked(TheLP.NotOwner.selector, uint256(1)));
     lp.sell(1);
   }
 
-  function test_sell_shouldThrowIfNotApproved() public {}
+  function test_sell_shouldThrowIfNotApproved() public {
+    _lockItIn();
+    vm.expectRevert(
+      abi.encodePacked(TheLP.ApprovalRequired.selector, uint256(1))
+    );
+    lp.sell(1);
+  }
 
-  function test_sell_shouldWorkWithApprovalForSingleToken() public {}
+  function test_sell_shouldWorkWithApprovalForSingleToken() public {
+    _lockItIn();
+    lp.approve(address(lp), 1);
+    uint256 sellPrice = lp.getSellPrice();
+    uint256 balanceBefore = address(this).balance;
+    lp.sell(1);
+    uint256 afterBalance = address(this).balance;
+    assertEq(afterBalance - balanceBefore, sellPrice);
+  }
 
-  function test_sell_shouldWorkWithApprovalForAll() public {}
+  function test_sell_shouldWorkWithApprovalForAll() public {
+    _lockItIn();
+    lp.setApprovalForAll(address(lp), true);
+    uint256 sellPrice = lp.getSellPrice();
+    uint256 balanceBefore = address(this).balance;
+    lp.sell(1);
+    uint256 afterBalance = address(this).balance;
+    assertEq(afterBalance - balanceBefore, sellPrice);
+  }
+
+  function test_sell_should_sell_multiple() public {
+    _lockItIn();
+    lp.setApprovalForAll(address(lp), true);
+    uint256 sellPrice = lp.getSellPrice();
+    uint256 balanceBefore = address(this).balance;
+    lp.sell(1);
+    lp.sell(2);
+    lp.sell(3);
+    uint256 afterBalance = address(this).balance;
+    assertEq(afterBalance - balanceBefore, sellPrice * 3);
+  }
+
+  function test_sell_shouldSellMultipleFromDifferentWallets() public {
+    _lockItIn();
+    Address.sendValue(payable(testAddress), 3 ether);
+    lp.transferFrom(address(this), testAddress, 7);
+    lp.transferFrom(address(this), testAddress, 10);
+    lp.transferFrom(address(this), testAddress, 4532);
+    lp.setApprovalForAll(address(lp), true);
+    uint256 sellPrice = lp.getSellPrice();
+    uint256 balanceBefore = address(this).balance;
+    lp.sell(1);
+    lp.sell(2);
+    lp.sell(3);
+    uint256 afterBalance = address(this).balance;
+    assertEq(afterBalance - balanceBefore, sellPrice * 3);
+
+    balanceBefore = address(testAddress).balance;
+    vm.startPrank(testAddress);
+    lp.setApprovalForAll(address(lp), true);
+    lp.sell(7);
+    lp.sell(10);
+    lp.sell(4532);
+    afterBalance = address(testAddress).balance;
+    assertEq(afterBalance - balanceBefore, sellPrice * 3);
+    vm.stopPrank();
+
+    uint256[] memory tokensForSale = lp.getAllTokensForSale();
+    uint16[6] memory expectedTokens = [1, 2, 3, 7, 10, 4532];
+    for (uint256 i = 0; i < tokensForSale.length; i++) {
+      assertEq(tokensForSale[i], expectedTokens[i]);
+    }
+  }
 
   function _lockItIn() internal {
     for (uint256 i = 0; i < 40; i++) {

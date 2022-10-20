@@ -9,6 +9,7 @@ import "openzeppelin-contracts/utils/Address.sol";
 import "prb-math/PRBMathUD60x18.sol";
 import "./Base64.sol";
 import "./TheLPRenderer.sol";
+import "forge-std/console2.sol";
 
 contract TheLP is ERC721A, Owned, ReentrancyGuard {
   using LibString for uint256;
@@ -25,6 +26,8 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   uint256 public MAX_PRICE = 3.33 ether;
   uint256 public minBuyPrice = 0.001 ether;
   uint256 public constant DURATION = 34 days;
+  uint256 public buyFee = 0.1 * 10**18;
+  uint256 public feeSplit = 2 * 10**18;
   uint256 public discountRate =
     uint256(MAX_PRICE - MIN_PRICE).div((DURATION - 1 days) * 10**18);
   uint256 public startTime;
@@ -88,9 +91,13 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     return output;
   }
 
-  function getEthBalance() public view returns (uint256) {
-    uint256 balance = address(this).balance;
-    uint256 fees = this.getFeeBalance();
+  function getEthBalance() external view returns (uint256) {
+    return _getEthBalance(0);
+  }
+
+  function _getEthBalance(uint256 minus) private view returns (uint256) {
+    uint256 balance = address(this).balance - minus;
+    uint256 fees = getFeeBalance();
     if (fees > balance) return 0;
     return balance - fees;
   }
@@ -98,9 +105,6 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   function updateMinBuyPrice(uint256 price) public onlyOwner {
     minBuyPrice = price;
   }
-
-  uint256 public buyFee = 0.1 * 10**18;
-  uint256 public feeSplit = 2 * 10**18;
 
   function updateFeeSplit(uint256 newSplit) public onlyOwner {
     feeSplit = newSplit;
@@ -110,8 +114,12 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     buyFee = newFee;
   }
 
-  function getBuyPrice() public view returns (uint256, uint256) {
-    uint256 a = getSellPrice();
+  function getBuyPrice() external view returns (uint256, uint256) {
+    return _getBuyPrice(0);
+  }
+
+  function _getBuyPrice(uint256 minus) private view returns (uint256, uint256) {
+    uint256 a = _getSellPrice(minus);
     if (a < minBuyPrice) {
       a = minBuyPrice;
     }
@@ -119,9 +127,13 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     return (a + fee, fee);
   }
 
-  function getSellPrice() public view returns (uint256) {
-    uint256 sellPrice = getEthBalance().div(
-      totalSupply() - balanceOf(address(this))
+  function getSellPrice() external view returns (uint256) {
+    return _getSellPrice(0);
+  }
+
+  function _getSellPrice(uint256 minus) private view returns (uint256) {
+    uint256 sellPrice = _getEthBalance(minus).div(
+      (totalSupply() - balanceOf(address(this))) * 10**18
     );
     return sellPrice;
   }
@@ -133,8 +145,9 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     if (ownerOf(id) != address(this)) {
       revert NotOwner(id);
     }
-    (uint256 cost, uint256 fee) = getBuyPrice();
-
+    (uint256 cost, uint256 fee) = _getBuyPrice(msg.value);
+    console2.log("COST");
+    console2.log(cost);
     if (msg.value < cost) {
       revert IncorrectPayment();
     }
@@ -150,6 +163,8 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     // Remove last item
     tokensForSale.pop();
 
+    transferFrom(address(this), msg.sender, id);
+
     uint256 refund = msg.value - cost;
     if (refund > 0) {
       Address.sendValue(payable(msg.sender), refund);
@@ -158,7 +173,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
 
   error ApprovalRequired(uint256 tokenId);
 
-  function sell(uint256 tokenId) public nonReentrant {
+  function sell(uint256 tokenId) public payable nonReentrant {
     if (ownerOf(tokenId) != msg.sender) {
       revert NotOwner(tokenId);
     }
@@ -172,8 +187,9 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     uint256 idx = tokensForSale.length - 1;
     mappingIdToIndex[tokenId].idx = idx;
     mappingIdToIndex[tokenId].exists = true;
+    uint256 sellPrice = _getSellPrice(msg.value);
     transferFrom(msg.sender, address(this), tokenId);
-    Address.sendValue(payable(msg.sender), getSellPrice());
+    Address.sendValue(payable(msg.sender), sellPrice);
   }
 
   uint256 private _totalFees;
