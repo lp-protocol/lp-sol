@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity ^0.8.13;
-import "ERC721A/ERC721A.sol";
+import "ERC721A/extensions/ERC721AQueryable.sol";
 import "solmate/utils/SSTORE2.sol";
 import "solmate/auth/Owned.sol";
 import "solmate/utils/LibString.sol";
@@ -11,7 +11,7 @@ import "./Base64.sol";
 import "./TheLPRenderer.sol";
 import "forge-std/console2.sol";
 
-contract TheLP is ERC721A, Owned, ReentrancyGuard {
+contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   using LibString for uint256;
   using PRBMathUD60x18 for uint256;
 
@@ -21,6 +21,9 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   event PaymentReleased(address to, uint256 amount);
 
   uint256 public constant MAX_SUPPLY = 10_000;
+  uint256 public constant MAX_PUB_SALE = 8_000;
+  uint256 public constant MAX_TEAM = 1_000;
+  uint256 public constant MAX_LP = 1_000;
   bool public gameOver;
   uint256 public MIN_PRICE = 0.0333 ether;
   uint256 public MAX_PRICE = 3.33 ether;
@@ -28,7 +31,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   uint256 public constant DURATION = 34 days;
   uint256 public buyFee = 0.1 * 10**18;
   uint256 public feeSplit = 2 * 10**18;
-  uint256 public discountRate =
+  uint256 public DISCOUNT_RATE =
     uint256(MAX_PRICE - MIN_PRICE).div((DURATION - 1 days) * 10**18);
   uint256 public startTime;
   uint256 public endTime;
@@ -43,12 +46,6 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     bytes32 seed;
     uint256 cost;
   }
-  struct Token {
-    bool exists;
-    uint256 idx;
-  }
-  mapping(uint256 => Token) public mappingIdToIndex;
-  uint256[] public tokensForSale;
 
   error TokenNotForSale();
   error IncorrectPayment();
@@ -60,35 +57,21 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   error InvalidTokenId(uint256 tokenId);
   error NotOwner(uint256 tokenId);
 
-  constructor(uint256 _startTime, TheLPRenderer _renderer)
-    ERC721A("The LP", "LP")
-    Owned(msg.sender)
-  {
+  constructor(
+    uint256 _startTime,
+    TheLPRenderer _renderer,
+    uint256 minPrice,
+    uint256 maxPrice
+  ) ERC721A("The LP", "LP") Owned(msg.sender) {
     startTime = _startTime;
     endTime = startTime + DURATION;
     renderer = _renderer;
+    MIN_PRICE = minPrice;
+    MAX_PRICE = maxPrice;
+    DISCOUNT_RATE = uint256(MAX_PRICE - MIN_PRICE).div(
+      (DURATION - 1 days) * 10**18
+    );
     // Team mint
-  }
-
-  function getTotalTokensForSale() public view returns (uint256) {
-    return tokensForSale.length;
-  }
-
-  function getAllTokensForSale() public view returns (uint256[] memory) {
-    return tokensForSale;
-  }
-
-  function paginateTokensForSale(uint256 from, uint256 to)
-    public
-    view
-    returns (uint256[] memory output)
-  {
-    uint256 count = from;
-    for (uint256 i = 0; count <= to; i++) {
-      output[i] = tokensForSale[count];
-      count++;
-    }
-    return output;
   }
 
   function getEthBalance() external view returns (uint256) {
@@ -139,9 +122,6 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   }
 
   function buy(uint256 id) public payable nonReentrant {
-    if (!mappingIdToIndex[id].exists) {
-      revert TokenNotForSale();
-    }
     if (ownerOf(id) != address(this)) {
       revert NotOwner(id);
     }
@@ -152,14 +132,6 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
 
     _totalFees += fee.div(feeSplit);
 
-    mappingIdToIndex[id].exists = false;
-
-    // Get last item in array
-    uint256 lastTokenInBuyArray = tokensForSale[tokensForSale.length - 1];
-    // Swap current item with last item
-    tokensForSale[mappingIdToIndex[id].idx] = lastTokenInBuyArray;
-    // Remove last item
-    tokensForSale.pop();
     // Approve sender to move this token
     // ERC721a doesn't abstract transfer functionality by default
     _tokenApprovals[id].value = msg.sender;
@@ -177,16 +149,12 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     if (ownerOf(tokenId) != msg.sender) {
       revert NotOwner(tokenId);
     }
-    if (
-      getApproved(tokenId) != address(this) &&
-      !isApprovedForAll(msg.sender, address(this))
-    ) {
-      revert ApprovalRequired(tokenId);
-    }
-    tokensForSale.push(tokenId);
-    uint256 idx = tokensForSale.length - 1;
-    mappingIdToIndex[tokenId].idx = idx;
-    mappingIdToIndex[tokenId].exists = true;
+    // if (
+    //   getApproved(tokenId) != address(this) &&
+    //   !isApprovedForAll(msg.sender, address(this))
+    // ) {
+    //   revert ApprovalRequired(tokenId);
+    // }
     uint256 sellPrice = _getSellPrice(msg.value);
     transferFrom(msg.sender, address(this), tokenId);
     Address.sendValue(payable(msg.sender), sellPrice);
@@ -241,7 +209,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
   function tokenURI(uint256 tokenId)
     public
     view
-    override
+    override(ERC721A, IERC721A)
     returns (string memory)
   {
     return renderer.getJsonUri(tokenId, tokenMintInfo[tokenId].seed);
@@ -282,6 +250,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     }
     uint256 half = address(this).balance.div(2 * 10**18);
     Address.sendValue(payable(owner), half);
+    _mintERC2309(address(this), MAX_LP);
     lockedIn = true;
   }
 
@@ -290,7 +259,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
       revert NotStarted();
     }
     uint256 timeElapsed = block.timestamp - startTime;
-    uint256 discount = discountRate * timeElapsed;
+    uint256 discount = DISCOUNT_RATE * timeElapsed;
     if (discount > MAX_PRICE) return MIN_PRICE;
     return MAX_PRICE - discount;
   }
@@ -312,7 +281,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     }
     uint256 totalMinted = _totalMinted();
     uint256 totalAfterMint = totalMinted + amount;
-    if (totalAfterMint > MAX_SUPPLY) {
+    if (totalAfterMint > MAX_PUB_SALE) {
       revert SoldOut();
     }
     uint256 mintPrice = getCurrentMintPrice();
@@ -334,7 +303,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
       Address.sendValue(payable(msg.sender), refund);
     }
     _mint(msg.sender, amount);
-    if (totalAfterMint == MAX_SUPPLY) {
+    if (totalAfterMint == MAX_PUB_SALE) {
       _lockItIn();
     }
   }
