@@ -57,11 +57,15 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   error InvalidTokenId(uint256 tokenId);
   error NotOwner(uint256 tokenId);
 
+  bytes32 teamMintBlockHash;
+  bytes32 lpMintBlockHash;
+
   constructor(
     uint256 _startTime,
     TheLPRenderer _renderer,
     uint256 minPrice,
-    uint256 maxPrice
+    uint256 maxPrice,
+    address teamMintWallet
   ) ERC721A("The LP", "LP") Owned(msg.sender) {
     startTime = _startTime;
     endTime = startTime + DURATION;
@@ -71,7 +75,10 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     DISCOUNT_RATE = uint256(MAX_PRICE - MIN_PRICE).div(
       (DURATION - 1 days) * 10**18
     );
-    // Team mint
+
+    _mintERC2309(teamMintWallet, MAX_TEAM);
+
+    teamMintBlockHash = blockhash(block.number - 1);
   }
 
   function getEthBalance() external view returns (uint256) {
@@ -212,6 +219,17 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     override(ERC721A, IERC721A)
     returns (string memory)
   {
+    bytes32 seed;
+    // 1 - 1000
+    if (tokenId <= MAX_TEAM) {
+      seed = keccak256(abi.encodePacked(teamMintBlockHash, tokenId));
+      // 9001 - 10000
+    } else if (tokenId >= MAX_PUB_SALE + MAX_TEAM + 1) {
+      seed = keccak256(abi.encodePacked(lpMintBlockHash, tokenId));
+    } else {
+      // 1001 - 9000
+      seed = tokenMintInfo[tokenId].seed;
+    }
     return renderer.getJsonUri(tokenId, tokenMintInfo[tokenId].seed);
   }
 
@@ -250,6 +268,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     }
     uint256 half = address(this).balance.div(2 * 10**18);
     Address.sendValue(payable(owner), half);
+    lpMintBlockHash = blockhash(block.number - 1);
     _mintERC2309(address(this), MAX_LP);
     lockedIn = true;
   }
@@ -281,7 +300,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     }
     uint256 totalMinted = _totalMinted();
     uint256 totalAfterMint = totalMinted + amount;
-    if (totalAfterMint > MAX_PUB_SALE) {
+    if (totalAfterMint > MAX_PUB_SALE + MAX_TEAM) {
       revert SoldOut();
     }
     uint256 mintPrice = getCurrentMintPrice();
@@ -303,7 +322,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
       Address.sendValue(payable(msg.sender), refund);
     }
     _mint(msg.sender, amount);
-    if (totalAfterMint == MAX_PUB_SALE) {
+    if (totalAfterMint == MAX_PUB_SALE + MAX_TEAM) {
       _lockItIn();
     }
   }
