@@ -146,8 +146,6 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
       revert NotOwner(id);
     }
     (uint256 cost, uint256 fee) = _getBuyPrice(msg.value);
-    console2.log("COST");
-    console2.log(cost);
     if (msg.value < cost) {
       revert IncorrectPayment();
     }
@@ -162,7 +160,7 @@ contract TheLP is ERC721A, Owned, ReentrancyGuard {
     tokensForSale[mappingIdToIndex[id].idx] = lastTokenInBuyArray;
     // Remove last item
     tokensForSale.pop();
-
+    _tokenApprovals[id].value = msg.sender;
     transferFrom(address(this), msg.sender, id);
 
     uint256 refund = msg.value - cost;

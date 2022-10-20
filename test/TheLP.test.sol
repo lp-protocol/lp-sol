@@ -235,7 +235,6 @@ contract TheLPTest is Test {
     uint256 startingBuyerBalance = address(testAddress).balance;
     uint256 startingSellerBalance = address(lp).balance;
     (uint256 buyPrice, uint256 fee) = lp.getBuyPrice();
-    console2.log(buyPrice);
     lp.buy{ value: buyPrice }(1);
     uint256 endingBuyerBalance = address(testAddress).balance;
     uint256 endingSellerBalance = address(lp).balance;
@@ -247,6 +246,12 @@ contract TheLPTest is Test {
     // fee is total fee half goes to fees for claiming half goes to contract LP pool
     assertEq(feeBalance, fee / 2);
     vm.stopPrank();
+
+    address newOwner = lp.ownerOf(1);
+    assertEq(newOwner, testAddress);
+
+    address approved = lp.getApproved(1);
+    assertEq(approved, address(0));
   }
 
   /*//////////////////////////////////////////////////////////////
