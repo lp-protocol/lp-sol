@@ -9,7 +9,8 @@ import "openzeppelin-contracts/utils/Address.sol";
 import "prb-math/PRBMathUD60x18.sol";
 import "./Base64.sol";
 import "./TheLPRenderer.sol";
-import "forge-std/console2.sol";
+
+// import "forge-std/console2.sol";
 
 contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   using LibString for uint256;
@@ -222,15 +223,18 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     bytes32 seed;
     // 1 - 1000
     if (tokenId <= MAX_TEAM) {
+      assert(tokenId >= 1 && tokenId <= 1000);
       seed = keccak256(abi.encodePacked(teamMintBlockHash, tokenId));
       // 9001 - 10000
     } else if (tokenId >= MAX_PUB_SALE + MAX_TEAM + 1) {
+      assert(tokenId >= 9001 && tokenId <= 10000);
       seed = keccak256(abi.encodePacked(lpMintBlockHash, tokenId));
     } else {
       // 1001 - 9000
+      assert(tokenId >= 1001 && tokenId <= 9000);
       seed = tokenMintInfo[tokenId].seed;
     }
-    return renderer.getJsonUri(tokenId, tokenMintInfo[tokenId].seed);
+    return renderer.getJsonUri(tokenId, seed);
   }
 
   function _startTokenId() internal view virtual override returns (uint256) {
