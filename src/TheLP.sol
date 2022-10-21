@@ -57,6 +57,10 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   error CannotRedeem();
   error InvalidTokenId(uint256 tokenId);
   error NotOwner(uint256 tokenId);
+  error AuctionEnded();
+  error NotStarted();
+  error AmountRequired();
+  error SoldOut();
 
   bytes32 teamMintBlockHash;
   bytes32 lpMintBlockHash;
@@ -82,10 +86,16 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     teamMintBlockHash = blockhash(block.number - 1);
   }
 
+  /// @dev Public function to get the usable ETH balanance.
+  /// This balance does not include ETH set aside of holder fees.
   function getEthBalance() external view returns (uint256) {
     return _getEthBalance(0);
   }
 
+  /// @dev Private function to get usable ETH balance of the smart contract.
+  /// This ETH balance is what is used for liquidity. It should not include
+  /// ETH that is set aside for fees. Includes minus argument to subtract
+  /// msg.value which should not be included in calculation.
   function _getEthBalance(uint256 minus) private view returns (uint256) {
     uint256 balance = address(this).balance - minus;
     uint256 fees = getFeeBalance();
@@ -93,22 +103,31 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return balance - fees;
   }
 
+  /// @dev Updates the min buy price. We don't ever want the buy price to be 0.
   function updateMinBuyPrice(uint256 price) public onlyOwner {
     minBuyPrice = price;
   }
 
+  /// @dev Public function to update the fee split
+  /// Can only be called by owner. When buy takes places a fee. The part of the fee is given to
+  /// holders. This controls how much goes to holders.
   function updateFeeSplit(uint256 newSplit) public onlyOwner {
     feeSplit = newSplit;
   }
 
+  /// @dev Public function to update the buy fee
+  /// Can only be called by owner
   function updateFee(uint256 newFee) public onlyOwner {
     buyFee = newFee;
   }
 
+  /// @dev Public get price function
   function getBuyPrice() external view returns (uint256, uint256) {
     return _getBuyPrice(0);
   }
 
+  /// @dev Get buy price. Includes minus params to account for
+  /// additional msg.value that should not be part of calculation.
   function _getBuyPrice(uint256 minus) private view returns (uint256, uint256) {
     uint256 a = _getSellPrice(minus);
     if (a < minBuyPrice) {
@@ -118,10 +137,13 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return (a + fee, fee);
   }
 
+  /// @dev Public get sell price function
   function getSellPrice() external view returns (uint256) {
     return _getSellPrice(0);
   }
 
+  /// @dev Get sell price. Includes minus params to account for
+  /// additional msg.value that should not be part of calculation.
   function _getSellPrice(uint256 minus) private view returns (uint256) {
     uint256 sellPrice = _getEthBalance(minus).div(
       (totalSupply() - balanceOf(address(this))) * 10**18
@@ -129,6 +151,8 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return sellPrice;
   }
 
+  /// @dev Function used to buy an NFT within the LP contract
+  /// Must send buy price. Will refund any additional amounts.
   function buy(uint256 id) public payable nonReentrant {
     if (ownerOf(id) != address(this)) {
       revert NotOwner(id);
@@ -153,16 +177,12 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
 
   error ApprovalRequired(uint256 tokenId);
 
+  /// @dev Function used to sell an NFT
+  /// Token ID must be owned by msg.sender
   function sell(uint256 tokenId) public payable nonReentrant {
     if (ownerOf(tokenId) != msg.sender) {
       revert NotOwner(tokenId);
     }
-    // if (
-    //   getApproved(tokenId) != address(this) &&
-    //   !isApprovedForAll(msg.sender, address(this))
-    // ) {
-    //   revert ApprovalRequired(tokenId);
-    // }
     uint256 sellPrice = _getSellPrice(msg.value);
     transferFrom(msg.sender, address(this), tokenId);
     Address.sendValue(payable(msg.sender), sellPrice);
@@ -174,9 +194,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return _totalFees;
   }
 
-  /**
-   * @dev Public function that can be used to calculate the pending ETH payment for a given NFT ID
-   */
+  /// @dev Public function that can be used to calculate the pending ETH payment for a given NFT ID
   function calculatePendingPayment(uint256 nftId)
     public
     view
@@ -190,6 +208,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
 
   error NotLockedIn();
 
+  /// @dev Internal function used to claim share of fees for a given NFT ID
   function _claim(uint256 nftId) private {
     if (!lockedIn) {
       revert NotLockedIn();
@@ -204,16 +223,20 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     emit PaymentReleased(ownerAddr, payment);
   }
 
+  /// @dev Public function used to claim share of available fees for a given NFT ID
   function claim(uint256 nftId) public nonReentrant {
     _claim(nftId);
   }
 
+  /// @dev Convenience method to claim fees for many NFT IDs
   function claimMany(uint256[] memory nftIds) public nonReentrant {
     for (uint256 i = 0; i < nftIds.length; i++) {
       _claim(nftIds[i]);
     }
   }
 
+  /// @dev Get on-chain token URI
+  /// Accounts for NFTs that were minted using ERC-2309
   function tokenURI(uint256 tokenId)
     public
     view
@@ -241,10 +264,12 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return 1;
   }
 
+  /// @dev Public function that returns game over status
   function isGameOver() public view returns (bool) {
     return block.timestamp >= endTime && _totalMinted() < MAX_SUPPLY;
   }
 
+  /// @dev Private function to redeem mint costs for a given NFT ID
   function _redeem(uint256 tokenId) private {
     if (tokenMintInfo[tokenId].cost == 0) {
       revert InvalidTokenId(tokenId);
@@ -256,6 +281,8 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     tokenMintInfo[tokenId].cost = 0;
   }
 
+  /// @dev Public function to redeem mint costs for multiple NFT IDs
+  /// This function can only be called if game over is true.
   function redeem(uint256[] memory tokenIds) public nonReentrant {
     if (!isGameOver()) {
       revert NotGameOver();
@@ -266,6 +293,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     }
   }
 
+  /// @dev Private function that is called once the last NFT of public sale is minted.
   function _lockItIn() private {
     if (lockedIn) {
       revert AlreadyLocked();
@@ -277,6 +305,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     lockedIn = true;
   }
 
+  /// @dev Gets the current mint price for dutch auction
   function getCurrentMintPrice() public view returns (uint256) {
     if (block.timestamp < startTime) {
       revert NotStarted();
@@ -287,11 +316,8 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return MAX_PRICE - discount;
   }
 
-  error AuctionEnded();
-  error NotStarted();
-  error AmountRequired();
-  error SoldOut();
-
+  /// @dev Public mint function
+  /// Must pass msg.value greater than or equal to current mint price * amount
   function mint(uint256 amount) public payable nonReentrant {
     if (block.timestamp >= endTime) {
       revert AuctionEnded();
@@ -331,6 +357,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     }
   }
 
+  /// @dev Receive function called when this contract receives Ether
   receive() external payable virtual {
     emit PaymentReceived(msg.sender, msg.value);
   }
