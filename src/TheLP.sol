@@ -10,7 +10,7 @@ import "prb-math/PRBMathUD60x18.sol";
 import "./Base64.sol";
 import "./TheLPRenderer.sol";
 
-// import "forge-std/console2.sol";
+import "forge-std/console2.sol";
 
 contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   using LibString for uint256;
@@ -21,15 +21,15 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   event PaymentReceived(address from, uint256 amount);
   event PaymentReleased(address to, uint256 amount);
 
-  uint256 public constant MAX_SUPPLY = 10_000;
-  uint256 public constant MAX_PUB_SALE = 8_000;
-  uint256 public constant MAX_TEAM = 1_000;
-  uint256 public constant MAX_LP = 1_000;
-  bool public gameOver;
+  uint256 public MAX_SUPPLY = 10_000;
+  uint256 public MAX_PUB_SALE = 8_000;
+  uint256 public MAX_TEAM = 1_000;
+  uint256 public MAX_LP = 1_000;
+  // Ends at the beginning of the 14th day
+  uint256 public DURATION = 14 days;
   uint256 public MIN_PRICE = 0.0333 ether;
   uint256 public MAX_PRICE = 3.33 ether;
   uint256 public minBuyPrice = 0.001 ether;
-  uint256 public constant DURATION = 34 days;
   uint256 public buyFee = 0.1 * 10**18;
   uint256 public feeSplit = 2 * 10**18;
   uint256 public DISCOUNT_RATE =
@@ -61,29 +61,53 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   error NotStarted();
   error AmountRequired();
   error SoldOut();
+  error NotLockedIn();
 
   bytes32 teamMintBlockHash;
   bytes32 lpMintBlockHash;
+  address teamMintWallet;
 
   constructor(
     uint256 _startTime,
     TheLPRenderer _renderer,
     uint256 minPrice,
     uint256 maxPrice,
-    address teamMintWallet
+    uint256 maxPubSale,
+    uint256 maxTeam,
+    uint256 maxLp,
+    uint256 duration,
+    address _teamMintWallet
   ) ERC721A("The LP", "LP") Owned(msg.sender) {
     startTime = _startTime;
     endTime = startTime + DURATION;
     renderer = _renderer;
     MIN_PRICE = minPrice;
     MAX_PRICE = maxPrice;
+    MAX_LP = maxLp;
+    MAX_TEAM = maxTeam;
+    MAX_PUB_SALE = maxPubSale;
+    MAX_SUPPLY = MAX_LP + MAX_TEAM + MAX_PUB_SALE;
+    DURATION = duration;
+
     DISCOUNT_RATE = uint256(MAX_PRICE - MIN_PRICE).div(
       (DURATION - 1 days) * 10**18
     );
 
+    teamMintWallet = _teamMintWallet;
     _mintERC2309(teamMintWallet, MAX_TEAM);
-
     teamMintBlockHash = blockhash(block.number - 1);
+  }
+
+  function updateMaxPrice(uint256 price) external onlyOwner {
+    MAX_PRICE = price;
+  }
+
+  function updateMinPrice(uint256 price) external onlyOwner {
+    MIN_PRICE = price;
+  }
+
+  function updateDuration(uint256 duration) external onlyOwner {
+    DURATION = duration;
   }
 
   /// @dev Public function to get the usable ETH balanance.
@@ -126,10 +150,18 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return _getBuyPrice(0);
   }
 
+  /// @dev Internal function to get the current price
+  function _getPrice(uint256 minus) internal view returns (uint256) {
+    uint256 price = _getEthBalance(minus).div(
+      balanceOf(address(this)) * 10**18
+    );
+    return price;
+  }
+
   /// @dev Get buy price. Includes minus params to account for
   /// additional msg.value that should not be part of calculation.
   function _getBuyPrice(uint256 minus) private view returns (uint256, uint256) {
-    uint256 a = _getSellPrice(minus);
+    uint256 a = _getPrice(minus);
     if (a < minBuyPrice) {
       a = minBuyPrice;
     }
@@ -138,17 +170,20 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   }
 
   /// @dev Public get sell price function
-  function getSellPrice() external view returns (uint256) {
+  function getSellPrice() external view returns (uint256, uint256) {
     return _getSellPrice(0);
   }
 
   /// @dev Get sell price. Includes minus params to account for
   /// additional msg.value that should not be part of calculation.
-  function _getSellPrice(uint256 minus) private view returns (uint256) {
-    uint256 sellPrice = _getEthBalance(minus).div(
-      (totalSupply() - balanceOf(address(this))) * 10**18
-    );
-    return sellPrice;
+  function _getSellPrice(uint256 minus)
+    private
+    view
+    returns (uint256, uint256)
+  {
+    uint256 a = _getPrice(minus);
+    uint256 fee = a.mul(0.1 * 10**18);
+    return (a - fee, fee);
   }
 
   /// @dev Function used to buy an NFT within the LP contract
@@ -183,15 +218,23 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     if (ownerOf(tokenId) != msg.sender) {
       revert NotOwner(tokenId);
     }
-    uint256 sellPrice = _getSellPrice(msg.value);
+    (uint256 sellPrice, uint256 fee) = _getSellPrice(msg.value);
+    _totalFees += fee.div(feeSplit);
     transferFrom(msg.sender, address(this), tokenId);
     Address.sendValue(payable(msg.sender), sellPrice);
   }
 
   uint256 private _totalFees;
 
+  /// @dev Function to get the total fees accumulated over time
   function getFeeBalance() public view returns (uint256) {
     return _totalFees;
+  }
+
+  /// @dev Function to manually migrate ETH from pool
+  /// Can be disabled by changing owner to address(0)
+  function migrate(uint256 amount) public onlyOwner {
+    Address.sendValue(payable(owner), amount);
   }
 
   /// @dev Public function that can be used to calculate the pending ETH payment for a given NFT ID
@@ -205,8 +248,6 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
         MAX_SUPPLY * 10**18
       );
   }
-
-  error NotLockedIn();
 
   /// @dev Internal function used to claim share of fees for a given NFT ID
   function _claim(uint256 nftId) private {
@@ -246,15 +287,12 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     bytes32 seed;
     // 1 - 1000
     if (tokenId <= MAX_TEAM) {
-      assert(tokenId >= 1 && tokenId <= 1000);
       seed = keccak256(abi.encodePacked(teamMintBlockHash, tokenId));
       // 9001 - 10000
     } else if (tokenId >= MAX_PUB_SALE + MAX_TEAM + 1) {
-      assert(tokenId >= 9001 && tokenId <= 10000);
       seed = keccak256(abi.encodePacked(lpMintBlockHash, tokenId));
     } else {
       // 1001 - 9000
-      assert(tokenId >= 1001 && tokenId <= 9000);
       seed = tokenMintInfo[tokenId].seed;
     }
     return renderer.getJsonUri(tokenId, seed);
@@ -290,6 +328,19 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
 
     for (uint256 i = 0; i < tokenIds.length; i++) {
       _redeem(tokenIds[i]);
+    }
+  }
+
+  /// @dev This function disables transfers until mint is complete.
+  function _beforeTokenTransfers(
+    address from,
+    address to,
+    uint256 startTokenId,
+    uint256 quantity
+  ) internal virtual override {
+    if (from == address(0)) return;
+    if (!lockedIn) {
+      revert NotLockedIn();
     }
   }
 
