@@ -18,6 +18,8 @@ contract TheLPTest is Test {
     traits = new TheLPTraits();
     renderer = new TheLPRenderer(traits);
     lp = new TheLP(
+      "The LP",
+      "LP",
       block.timestamp,
       renderer,
       0.0333 ether,
@@ -25,7 +27,7 @@ contract TheLPTest is Test {
       8_000,
       1_000,
       1_000,
-      10 days,
+      12 days,
       address(this)
     );
     // renderer.setTraitsImage(
@@ -46,7 +48,7 @@ contract TheLPTest is Test {
     //////////////////////////////////////////////////////////////*/
   function testMint_Should_Revert_If_Current_Time_Gte_EndTime() public {
     uint256 current = block.timestamp;
-    vm.warp(block.timestamp + 34 days);
+    vm.warp(block.timestamp + 12 days);
     uint256 price = lp.getCurrentMintPrice();
     vm.expectRevert(TheLP.AuctionEnded.selector);
     lp.mint{ value: price }(1);
@@ -66,6 +68,8 @@ contract TheLPTest is Test {
 
   function testMint_should_revert_if_not_started() public {
     lp = new TheLP(
+      "The LP",
+      "LP",
       block.timestamp + 10 days,
       renderer,
       0.0333 ether,
@@ -175,21 +179,28 @@ contract TheLPTest is Test {
     //////////////////////////////////////////////////////////////*/
 
   function testGetCurrentPrice_ShouldDecreaseOverTime() public {
-    for (uint256 i = 0; i <= 10; i++) {
+    for (uint256 i = 1; i <= 12; i++) {
       uint256 currentMintPrice = lp.getCurrentMintPrice();
       if (i == 0) {
         assertEq(currentMintPrice, 3.33 ether);
       }
-      if (i == 33) {
-        assertEq(currentMintPrice, 0.0333 ether);
+      if (i == 12) {
+        // assertEq(currentMintPrice, 0.0333 ether);
       }
       lp.mint{ value: currentMintPrice }(1);
-      vm.warp(block.timestamp + 1 days);
+      if (i != 12) {
+        vm.warp(block.timestamp + 1 days);
+      }
     }
+    vm.warp(block.timestamp + 23.99 hours);
+    uint256 currentMintPrice = lp.getCurrentMintPrice();
+    assertEq(currentMintPrice, 33414468750000000);
   }
 
   function testGetCurrentPrice_ShouldRevertIfNotStarted() public {
     lp = new TheLP(
+      "The LP",
+      "LP",
       block.timestamp + 10 days,
       renderer,
       0.0333 ether,
@@ -203,10 +214,6 @@ contract TheLPTest is Test {
     vm.expectRevert(TheLP.NotStarted.selector);
     lp.getCurrentMintPrice();
   }
-
-  /*//////////////////////////////////////////////////////////////
-        is game over
-    //////////////////////////////////////////////////////////////*/
 
   /*//////////////////////////////////////////////////////////////
         Redeem
@@ -337,25 +344,11 @@ contract TheLPTest is Test {
   }
 
   function test_buy_ShouldIncreaseBuyPriceEachTime() public {
-    lp = new TheLP(
-      block.timestamp,
-      renderer,
-      0.0333 ether,
-      3.33 ether,
-      5_000,
-      1_000,
-      4_000,
-      10 days,
-      address(this)
-    );
-    lockItInVars(20, 250);
-
     vm.deal(testAddress, 100000 ether);
     vm.startPrank(testAddress);
     uint256[] memory tokens = lp.tokensOfOwner(address(lp));
     for (uint256 i = 0; i < tokens.length; i++) {
       (uint256 buyPrice, uint256 fee) = lp.getBuyPrice();
-      console2.log(buyPrice);
       lp.buy{ value: buyPrice }(tokens[i]);
     }
 
@@ -372,27 +365,9 @@ contract TheLPTest is Test {
       lp.sell{ value: sellPrice }(owned[i]);
     }
     uint256 balanceOfContract = lp.balanceOf(address(lp));
-    console2.log(balanceOfContract);
     uint256 fees = lp.getFeeBalance();
-    console2.log(fees);
     uint256 ethBalance = address(lp).balance;
-    console2.log(ethBalance);
   }
-
-  // function test_buy_ShouldIncreaseEarnedFees5PercentEachTime() public {
-  //   _lockItIn();
-  //   Address.sendValue(payable(testAddress), 20 ether);
-  //   vm.startPrank(testAddress);
-  //   (uint256 buyPrice, uint256 fee) = lp.getBuyPrice();
-  //   lp.buy{ value: buyPrice }(10000);
-  //   (buyPrice, fee) = lp.getBuyPrice();
-  //   lp.buy{ value: buyPrice }(9001);
-  //   uint256[] memory ownedTokens = lp.tokensOfOwner(testAddress);
-  //   assertEq(ownedTokens.length, 2);
-  //   assertEq(ownedTokens[0], 9001);
-  //   assertEq(ownedTokens[1], 10000);
-  //   vm.stopPrank();
-  // }
 
   /*//////////////////////////////////////////////////////////////
         Selling post mint
@@ -493,6 +468,86 @@ contract TheLPTest is Test {
   /*//////////////////////////////////////////////////////////////
         Claiming fees
     //////////////////////////////////////////////////////////////*/
+  function testShouldBeAbleToClaimFees() public {
+    _lockItIn();
+    vm.deal(testAddress, 100000 ether);
+    vm.startPrank(testAddress);
+    uint256[] memory tokens = lp.tokensOfOwner(address(lp));
+    for (uint256 i = 0; i < 100; i++) {
+      (uint256 buyPrice, uint256 fee) = lp.getBuyPrice();
+      lp.buy{ value: buyPrice }(tokens[i]);
+    }
+
+    uint256 pendingPayment = lp.calculatePendingPayment(tokens[0]);
+    uint256 beforeBalance = testAddress.balance;
+    lp.claim(tokens[0]);
+    uint256 afterBalance = testAddress.balance;
+    assertEq(afterBalance - beforeBalance, pendingPayment);
+    vm.stopPrank();
+  }
+
+  function testShouldClaimForOneClaimForAnother() public {
+    _lockItIn();
+    vm.deal(testAddress, 100000 ether);
+    vm.startPrank(testAddress);
+    uint256[] memory tokens = lp.tokensOfOwner(address(lp));
+    for (uint256 i = 0; i < 100; i++) {
+      (uint256 buyPrice, uint256 fee) = lp.getBuyPrice();
+      lp.buy{ value: buyPrice }(tokens[i]);
+    }
+    uint256 pendingPayment0a = lp.calculatePendingPayment(tokens[0]);
+    lp.claim(tokens[0]);
+    uint256 pendingPayment1a = lp.calculatePendingPayment(tokens[1]);
+    lp.claim(tokens[1]);
+    uint256 pendingPayment0 = lp.calculatePendingPayment(tokens[0]);
+    assertEq(pendingPayment0, 0);
+    uint256 pendingPayment1 = lp.calculatePendingPayment(tokens[1]);
+    assertEq(pendingPayment1, 0);
+    vm.stopPrank();
+  }
+
+  function testShouldThrowIfNoFeeToClaim() public {
+    _lockItIn();
+    vm.deal(testAddress, 100000 ether);
+    vm.startPrank(testAddress);
+    uint256[] memory tokens = lp.tokensOfOwner(address(lp));
+    for (uint256 i = 0; i < 100; i++) {
+      (uint256 buyPrice, uint256 fee) = lp.getBuyPrice();
+      lp.buy{ value: buyPrice }(tokens[i]);
+    }
+    lp.claim(tokens[0]);
+    assertEq(lp.calculatePendingPayment(tokens[0]), 0);
+    vm.expectRevert(TheLP.NothingToClaim.selector);
+    lp.claim(tokens[0]);
+    vm.stopPrank();
+  }
+
+  function testShouldAllowToClaimAfterMoreFeesAreAdded() public {
+    _lockItIn();
+    vm.deal(testAddress, 100000 ether);
+    vm.startPrank(testAddress);
+    uint256[] memory tokens = lp.tokensOfOwner(address(lp));
+    for (uint256 i = 0; i < 100; i++) {
+      (uint256 buyPrice, ) = lp.getBuyPrice();
+      lp.buy{ value: buyPrice }(tokens[i]);
+    }
+    lp.claim(tokens[0]);
+    for (uint256 i = 101; i < 200; i++) {
+      (uint256 buyPrice, ) = lp.getBuyPrice();
+      lp.buy{ value: buyPrice }(tokens[i]);
+    }
+    lp.claim(tokens[0]);
+    vm.stopPrank();
+  }
+
+  /*//////////////////////////////////////////////////////////////
+      Misc.
+    //////////////////////////////////////////////////////////////*/
+
+  function testExternalDepositShouldNotAllowMoreFeeThanMessage() public {
+    vm.expectRevert(TheLP.InvalidDepositAmount.selector);
+    lp.externalDeposit{ value: 1 ether }(2 ether);
+  }
 
   function testShouldBeAbleToTransferAfterMint() public {
     address user = address(1);

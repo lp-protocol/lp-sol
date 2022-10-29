@@ -21,27 +21,23 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   event PaymentReceived(address from, uint256 amount);
   event PaymentReleased(address to, uint256 amount);
 
-  uint256 public MAX_SUPPLY = 10_000;
-  uint256 public MAX_PUB_SALE = 8_000;
-  uint256 public MAX_TEAM = 1_000;
-  uint256 public MAX_LP = 1_000;
-  // Ends at the beginning of the 14th day
-  uint256 public DURATION = 14 days;
-  uint256 public MIN_PRICE = 0.0333 ether;
-  uint256 public MAX_PRICE = 3.33 ether;
-  uint256 public minBuyPrice = 0.001 ether;
+  uint256 public MAX_SUPPLY;
+  uint256 public MAX_PUB_SALE;
+  uint256 public MAX_TEAM;
+  uint256 public MAX_LP;
+  uint256 public DURATION;
+  uint256 public MIN_PRICE;
+  uint256 public MAX_PRICE;
+  uint256 public minBuyPrice = 1 gwei;
   uint256 public buyFee = 0.1 * 10**18;
   uint256 public feeSplit = 2 * 10**18;
-  uint256 public DISCOUNT_RATE =
-    uint256(MAX_PRICE - MIN_PRICE).div((DURATION - 1 days) * 10**18);
+  uint256 public DISCOUNT_RATE;
   uint256 public startTime;
   uint256 public endTime;
   address public traitsImagePointer;
   uint256 public totalEthClaimed;
   bool public lockedIn = false;
-  mapping(uint256 => uint256) private _rewardDebt;
-  mapping(address => mapping(uint256 => uint256)) private _erc20RewardDebt;
-  mapping(address => uint256) private _erc20TotalClaimed;
+  mapping(uint256 => uint256) public _rewardDebt;
   mapping(uint256 => TokenMintInfo) public tokenMintInfo;
   struct TokenMintInfo {
     bytes32 seed;
@@ -68,6 +64,8 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
   address teamMintWallet;
 
   constructor(
+    string memory name,
+    string memory symbol,
     uint256 _startTime,
     TheLPRenderer _renderer,
     uint256 minPrice,
@@ -77,9 +75,9 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     uint256 maxLp,
     uint256 duration,
     address _teamMintWallet
-  ) ERC721A("The LP", "LP") Owned(msg.sender) {
+  ) ERC721A(name, symbol) Owned(msg.sender) {
     startTime = _startTime;
-    endTime = startTime + DURATION;
+    endTime = startTime + duration;
     renderer = _renderer;
     MIN_PRICE = minPrice;
     MAX_PRICE = maxPrice;
@@ -88,11 +86,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     MAX_PUB_SALE = maxPubSale;
     MAX_SUPPLY = MAX_LP + MAX_TEAM + MAX_PUB_SALE;
     DURATION = duration;
-
-    DISCOUNT_RATE = uint256(MAX_PRICE - MIN_PRICE).div(
-      (DURATION - 1 days) * 10**18
-    );
-
+    DISCOUNT_RATE = uint256(MAX_PRICE - MIN_PRICE).div((duration) * 10**18);
     teamMintWallet = _teamMintWallet;
     _mintERC2309(teamMintWallet, MAX_TEAM);
     teamMintBlockHash = blockhash(block.number - 1);
@@ -150,23 +144,33 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     return _getBuyPrice(0);
   }
 
-  /// @dev Internal function to get the current price
-  function _getPrice(uint256 minus) internal view returns (uint256) {
-    uint256 price = _getEthBalance(minus).div(
-      balanceOf(address(this)) * 10**18
-    );
-    return price;
+  /// @dev Internal function to get the current price and fee
+  function _getPrice(uint256 minus, bool isBuy)
+    internal
+    view
+    returns (uint256, uint256)
+  {
+    uint256 balance = balanceOf(address(this));
+    uint256 priceA = _getEthBalance(minus).div(balance * 10**18);
+    if (isBuy) {
+      balance -= 1;
+    } else {
+      balance += 1;
+    }
+    uint256 priceB = _getEthBalance(minus).div(balance * 10**18);
+    uint256 fee;
+    if (priceB > priceA) {
+      fee = priceB - priceA;
+    } else {
+      fee = priceA - priceB;
+    }
+    return (priceB, fee);
   }
 
   /// @dev Get buy price. Includes minus params to account for
   /// additional msg.value that should not be part of calculation.
   function _getBuyPrice(uint256 minus) private view returns (uint256, uint256) {
-    uint256 a = _getPrice(minus);
-    if (a < minBuyPrice) {
-      a = minBuyPrice;
-    }
-    uint256 fee = a.mul(0.1 * 10**18);
-    return (a + fee, fee);
+    return _getPrice(minus, true);
   }
 
   /// @dev Public get sell price function
@@ -181,9 +185,7 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     view
     returns (uint256, uint256)
   {
-    uint256 a = _getPrice(minus);
-    uint256 fee = a.mul(0.1 * 10**18);
-    return (a - fee, fee);
+    return _getPrice(minus, false);
   }
 
   /// @dev Function used to buy an NFT within the LP contract
@@ -243,23 +245,48 @@ contract TheLP is ERC721AQueryable, Owned, ReentrancyGuard {
     view
     returns (uint256)
   {
-    return
-      (getFeeBalance() + totalEthClaimed - _rewardDebt[nftId]).div(
-        MAX_SUPPLY * 10**18
-      );
+    uint256 a = getFeeBalance() + totalEthClaimed - _rewardDebt[nftId];
+    if (a == 0) return 0;
+    return (a).div(MAX_SUPPLY * 10**18);
   }
 
+  error InvalidDepositAmount();
+
+  /// @dev External function that can be used to add to ETH pool and total fees
+  function externalDeposit(uint256 amountTowardsFees)
+    external
+    payable
+    returns (bool)
+  {
+    if (msg.value == 0) {
+      revert InvalidDepositAmount();
+    }
+    if (amountTowardsFees > msg.value) {
+      revert InvalidDepositAmount();
+    }
+    _totalFees += amountTowardsFees;
+    return true;
+  }
+
+  error NothingToClaim();
+
   /// @dev Internal function used to claim share of fees for a given NFT ID
+  /// Throws if trying to claim for NFTs in pool
   function _claim(uint256 nftId) private {
     if (!lockedIn) {
       revert NotLockedIn();
     }
     uint256 payment = calculatePendingPayment(nftId);
-    require(payment > 0, "Nothing to claim");
-    uint256 preBalance = address(this).balance;
-    _rewardDebt[nftId] += preBalance;
+    if (payment == 0) {
+      revert NothingToClaim();
+    }
     totalEthClaimed += payment;
     address ownerAddr = ownerOf(nftId);
+    if (ownerAddr == address(this)) {
+      revert NothingToClaim();
+    }
+    _totalFees -= payment;
+    _rewardDebt[nftId] = _totalFees + totalEthClaimed;
     Address.sendValue(payable(ownerAddr), payment);
     emit PaymentReleased(ownerAddr, payment);
   }
